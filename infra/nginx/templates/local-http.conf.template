@@ -1,0 +1,38 @@
+# 本地一体化运行用的配置：不启用 HTTPS，但完整代理 web / api / matomo。
+#
+# 与 http-only.conf.template 的区别很重要：
+#   那份只返回一行占位文案，是给证书签发引导阶段用的——那时应用还没起来，
+#   它的唯一职责是让 Certbot 能在 80 端口完成 HTTP-01 验证。
+#   这份是真正可用的应用入口，让整套栈在 localhost 上跑起来而不需要域名和证书。
+#
+# 由 make local-up 渲染，不要手工放到生产环境：它没有 TLS，也没有 HSTS 等安全头。
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${APP_DOMAIN};
+
+    # 与生产共用同一份反代头配置，包括 X-Forwarded-For 用 $remote_addr 覆盖这一点。
+    # 本地也要保持一致，否则测出来的限流行为和线上不同。
+    include /etc/nginx/conf.d/proxy-headers.inc;
+
+    client_max_body_size 10m;
+
+    # proxy_pass 末尾不带斜杠 → 保留完整 URI
+    location /api/ {
+        proxy_pass http://api:8080;
+        proxy_read_timeout 60s;
+    }
+
+    # 末尾带斜杠 → 剥掉 /matomo 前缀
+    location /matomo/ {
+        proxy_pass http://matomo:80/;
+        proxy_read_timeout 120s;
+    }
+
+    # 放在最后：nginx 按最长前缀匹配，/api/ 与 /matomo/ 会优先命中
+    location / {
+        proxy_pass http://web:3000;
+        proxy_read_timeout 60s;
+    }
+}

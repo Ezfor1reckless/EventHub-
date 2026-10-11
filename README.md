@@ -42,16 +42,57 @@ event-platform/
 - **组织者**：创建活动、管理报名、生成签到二维码、查看统计
 - **管理员**：用户管理、活动审核、系统配置、审计日志
 
-## 快速开始
+## 怎么运行
 
-前置：Node.js ≥ 20、JDK 17、Maven ≥ 3.9、Docker + Docker Compose。
+有两种方式，用途不同。
+
+### 方式一：本地一体化（想看到整个系统跑起来）
+
+一条命令，整套栈跑在 Docker 里，入口是 Nginx：
 
 ```bash
-cp .env.example .env          # 填入真实配置，切勿提交
-make up                       # 启动 MySQL / Redis / RabbitMQ / Matomo
-make logs                     # 查看日志
-make down                     # 停止
+make local-up
 ```
+
+打开 **http://localhost/** 即可。无需域名、无需证书。
+
+首次会构建 api / web 镜像（几分钟），之后启动约 30 秒。这个脚本做的是：
+用 `.env.example` 的占位配置、渲染一份不带 TLS 的 Nginx 配置、启动全部 9 个容器。
+
+```bash
+make prod-ps       # 查看各容器状态与健康检查
+make prod-logs     # 跟踪日志
+make local-down    # 停止（保留数据）
+make local-reset   # 停止并清空所有数据
+```
+
+> **为什么不用 `make prod-up`**：那是给真实服务器用的，Nginx 会加载 443 的配置，
+> 而 443 需要证书；本地没有域名签不出证书，栈会直接起不来。
+> `make local-up` 渲染的是功能完整、只是没有 TLS 的那份配置。
+
+### 方式二：开发模式（改代码时用）
+
+代码跑在宿主机上，有热重载；只有数据服务在 Docker 里。需要三个终端：
+
+```bash
+# 终端 1
+make up            # MySQL / Redis / RabbitMQ / Matomo
+
+# 终端 2
+make api           # 后端 :8080（接口文档 http://localhost:8080/swagger-ui.html）
+
+# 终端 3
+make web           # Web :3000
+```
+
+移动端另开一个终端：`make mobile`（用 Expo Go 扫码，或按 i / a 开模拟器）。
+
+> 本机 3306 若已被其他 MySQL 占用，`make up` 会失败。改用其他端口：
+> `MYSQL_PORT=13306 make up`，然后 `MYSQL_PORT=13306 make api`。
+
+### 前置条件
+
+Node.js ≥ 20（npm ≥ 11）、JDK 17、Maven ≥ 3.9、Docker + Docker Compose。
 
 > `.env.example` 的读写权限在 `.claude/settings.json` 中显式放行，`.env` 保持拒绝——避免真实密钥被误写或误读。
 

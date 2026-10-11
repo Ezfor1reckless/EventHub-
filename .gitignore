@@ -40,6 +40,13 @@ target/
 # ---- docker volumes (local bind mounts, if any) ----
 infra/data/
 
+# ---- nginx 渲染产物 ----
+# conf.d 里的配置由 scripts/init-letsencrypt.sh 或 scripts/local-up.sh 用
+# templates/ 下的模板渲染出来。入库存模板，不存渲染结果——
+# 否则域名一变，渲染产物和模板就对不上了，而且没人知道该改哪个。
+infra/nginx/conf.d/*.conf
+infra/nginx/conf.d/*.inc
+
 # ---- playwright ----
 # 测试产物：失败截图、trace、HTML 报告。CI 里需要时通过 artifact 上传，
 # 不该进版本库。

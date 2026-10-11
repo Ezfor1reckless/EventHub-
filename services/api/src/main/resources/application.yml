@@ -114,6 +114,21 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+  health:
+    mail:
+      # 关掉邮件健康检查。
+      #
+      # Spring Boot 只要发现 spring.mail.host 有值就会自动注册 MailHealthIndicator，
+      # 它会真的去连 SMTP。问题在于邮件对本项目是**可选**的——MAIL_ENABLED 默认为
+      # false，走的 LoggingMailGateway，邮件发不出去不影响任何功能。
+      #
+      # 不关掉的后果不是「少一个指标」而是「整个应用起不来」：
+      # SMTP 连不上 → /actuator/health 返回 DOWN → 容器 unhealthy →
+      # 依赖它的 Nginx 拒绝启动。负载均衡或编排系统同样会把一个完全正常的实例摘出。
+      #
+      # 健康检查应当只反映「这个实例能不能对外服务」，把它绑在一个按设计就可以缺席的
+      # 依赖上，等于让可选组件拥有了否决权。
+      enabled: false
 
 springdoc:
   api-docs:

@@ -80,3 +80,14 @@ prod-config: ## 校验生产编排配置并打印最终结果（不启动任何�
 
 init-ssl: ## 首次签发 TLS 证书（建议先 STAGING=1 make init-ssl 试跑）
 	@bash scripts/init-letsencrypt.sh
+
+# ---------------- 本地一体化运行 ----------------
+
+local-up: ## 本地跑起整套栈（HTTP，无需域名；首次要构建镜像）
+	@bash scripts/local-up.sh
+
+local-down: ## 停止本地一体化运行（保留数据卷）
+	$(PROD_COMPOSE) down
+
+local-reset: ## 本地一体化运行下清空所有数据（含数据卷，不可恢复）
+	$(PROD_COMPOSE) down -v

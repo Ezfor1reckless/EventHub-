@@ -74,8 +74,10 @@ services:
       # 所以此时可以采信它做基于 IP 的限流
       # （见 nginx/templates/proxy-headers.inc.template 里的说明）
       TRUST_PROXY: "true"
-      # 刷新令牌 Cookie 必须只在 HTTPS 上下发
-      AUTH_COOKIE_SECURE: "true"
+      # 刷新令牌 Cookie 只在 HTTPS 上下发。生产必须保持 true；
+      # 本地一体化运行（make local-up，走 http）需要显式覆盖为 false，
+      # 否则浏览器会拒收 Cookie，表现为「登录后刷新一下又变回未登录」。
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       AUTH_COOKIE_SAME_SITE: Lax
 
       # 邮件。MAIL_ENABLED=false 时只记日志不发信，但整条通知链路照常走通。
@@ -94,7 +96,9 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      # 同样用 127.0.0.1 而不是 localhost，理由见下面 web 服务的说明：
+      # 容器里 localhost 优先解析到 IPv6，而服务只监听 IPv4。
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -108,6 +112,13 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     environment:
+      # 必须显式设置，不能只靠 Dockerfile 里的 ENV。
+      # Docker 创建容器时会把 HOSTNAME 设为容器 ID，覆盖镜像里的值；
+      # Next 的 standalone server 读它来决定绑定地址，于是只绑到容器 IP 而不是 0.0.0.0。
+      # 后果是容器内部 `wget http://localhost:3000` 被拒，healthcheck 永远失败，
+      # 容器一直显示 unhealthy —— 而通过发布端口的访问完全正常，非常难排查。
+      HOSTNAME: "0.0.0.0"
+
       # 浏览器侧的 API 地址。必须是公网可达的地址，不能是容器名——
       # 这个值会被打进客户端 JS，在用户浏览器里解析。
       NEXT_PUBLIC_API_BASE_URL: ${API_BASE_URL}
@@ -119,7 +130,11 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      # 必须用 127.0.0.1 而不是 localhost。
+      # 容器里 localhost 会优先解析到 IPv6 的 ::1，而 Next standalone server
+      # 只监听 IPv4（0.0.0.0:3000），于是 curl/wget 连 [::1]:3000 被拒，
+      # healthcheck 永远失败、容器一直显示 unhealthy —— 而通过端口的访问完全正常。
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
       interval: 15s
       timeout: 5s
       retries: 10

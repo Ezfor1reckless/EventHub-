@@ -37,7 +37,18 @@ RUN addgroup -S app && adduser -S -G app app
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
-# 必须绑 0.0.0.0：默认只监听 localhost 的话，容器外部（包括 Nginx）连不上
+
+# 注意：这里写 HOSTNAME 其实**不会生效**。
+# Docker 在创建容器时会把容器内环境变量 HOSTNAME 设为容器 ID，覆盖掉镜像里的值；
+# 而 Next 的 standalone server 读 process.env.HOSTNAME 决定绑定地址，
+# 于是它绑到了「容器 ID 对应的那个地址」而不是 0.0.0.0。
+#
+# 表现很有迷惑性：通过 docker publish 的端口访问一切正常（Docker 的转发直接打到容器 IP），
+# 但容器自己的健康检查 `wget http://localhost:3000` 会 Connection refused，
+# 容器因此永久处于 unhealthy——而服务实际上完全可用。
+#
+# 真正的修复在 docker-compose.prod.yml 的 web 服务里：显式设置 HOSTNAME=0.0.0.0，
+# 用户指定的环境变量优先级高于 Docker 自动注入的那个。
 ENV HOSTNAME=0.0.0.0
 
 # standalone 产物已内含精简过的 node_modules 和 server.js，

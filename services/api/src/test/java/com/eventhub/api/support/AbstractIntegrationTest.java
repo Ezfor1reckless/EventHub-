@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -43,6 +44,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+// 激活 test profile，让 application-test.yml 作为**叠加层**生效。
+// 主配置 application.yml 照常加载——这一点很重要，见 application-test.yml 顶部的说明：
+// 如果测试资源里放的是同名 application.yml，它会整体替换掉主配置，
+// 导致 ddl-auto=validate 这类设置静默失效。
+@ActiveProfiles("test")
 public abstract class AbstractIntegrationTest {
 
     protected static final int REDIS_PORT = 6379;
