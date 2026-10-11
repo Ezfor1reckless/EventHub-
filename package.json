@@ -1,0 +1,24 @@
+{
+  "name": "event-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EventHub — 社区活动报名与签到平台",
+  "workspaces": [
+    "apps/web",
+    "apps/mobile"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "overrides": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2"
+  },
+  "scripts": {
+    "dev:web": "npm run dev --workspace apps/web",
+    "dev:mobile": "npm run start --workspace apps/mobile",
+    "build:web": "npm run build --workspace apps/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}

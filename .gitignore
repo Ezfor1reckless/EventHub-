@@ -1,0 +1,41 @@
+# ---- secrets ----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ---- node ----
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# ---- expo / react native ----
+.expo/
+.expo-shared/
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+ios/
+android/
+
+# ---- java / maven ----
+target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# ---- ide / os ----
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# ---- docker volumes (local bind mounts, if any) ----
+infra/data/
