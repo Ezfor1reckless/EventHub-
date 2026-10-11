@@ -65,7 +65,7 @@ make down                     # 停止
 - [x] **阶段 2** 核心业务：活动 CRUD、报名、候补递补、并发防超卖、扫码签到
 - [x] **阶段 3** 异步与缓存：Outbox + RabbitMQ 通知/审计、Redis 缓存与限流、死信队列
 - [x] **阶段 4** Web 端：公开页面（Server Components）、登录注册、我的报名与票券、通知、组织者管理台、Matomo 埋点
-- [ ] **阶段 5** 移动端
+- [x] **阶段 5** 移动端：Expo 57 + Expo Router，活动浏览/报名、票券二维码、扫码签到、通知、个人中心
 - [ ] **阶段 6** 部署：Nginx + Certbot + 生产 Compose
 - [ ] **阶段 7** 测试与验收：JUnit / Testcontainers / Playwright / Jest
 
@@ -111,6 +111,41 @@ make web         # 再开一个终端，起 Next.js（:3000）
 
 **管理端页面（用户管理、活动审核、审计日志、系统配置）没有做**，因为后端还没有
 `/admin/*` 接口。这几个页面需要先补后端管理接口，否则只能做出点了没反应的假页面。
+
+## 移动端
+
+```bash
+make up && make api      # 后端
+make mobile              # 启动 Expo（扫码用 Expo Go 打开，或按 i / a 开模拟器）
+```
+
+移动端连的是 `EXPO_PUBLIC_API_BASE_URL`。用真机调试时要填**本机局域网 IP**，
+不能是 `localhost`——手机上的 localhost 指向手机自己：
+
+```bash
+EXPO_PUBLIC_API_BASE_URL=http://192.168.1.x:8080/api/v1 make mobile
+```
+
+### 屏幕
+
+| 路由 | 说明 |
+|---|---|
+| `/(tabs)/index` | 活动列表（无限滚动 + 下拉刷新） |
+| `/events/[id]` | 活动详情、报名/取消 |
+| `/(tabs)/tickets` | 我的报名与电子票券（含二维码） |
+| `/(tabs)/notifications` | 通知 |
+| `/(tabs)/profile` | 个人中心 |
+| `/scan` | 扫码签到（相机） |
+| `/organizer` | 我组织的活动（只读 + 发布） |
+
+### 令牌存储与 Web 不同
+
+移动端没有 HttpOnly Cookie 可用，刷新令牌存在 **SecureStore**（iOS Keychain /
+Android Keystore），访问令牌只在内存。用 SecureStore 而不是 AsyncStorage 的原因：
+后者在已 root 的设备上是明文可读的，而刷新令牌有效期 7 天，拿到它就等于长期接管账号。
+
+**创建和编辑活动不在移动端**——策划里移动端的范围是浏览、报名、票券、扫码和通知，
+活动管理属于 Web 端。与其做一个字段残缺的管理页，不如让 `/organizer` 保持只读。
 
 ## 约定
 

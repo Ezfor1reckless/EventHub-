@@ -1,65 +1,60 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
+/**
+ * 配色与 Web 端保持一致（slate 色阶）。
+ *
+ * 刻意只做浅色：深色模式不是「把背景和文字对调」那么简单——徽章、表单、
+ * 卡片边框都得各有一套取值。半套深色模式比没有更糟，所以先统一浅色。
+ */
 export const Colors = {
-  light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-  },
-  dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-  },
+  background: '#F8FAFC', // slate-50
+  surface: '#FFFFFF',
+  border: '#E2E8F0', // slate-200
+  borderStrong: '#CBD5E1', // slate-300
+  text: '#0F172A', // slate-900
+  textMuted: '#64748B', // slate-500
+  textFaint: '#94A3B8', // slate-400
+  primary: '#0F172A',
+  onPrimary: '#FFFFFF',
+  success: '#047857', // emerald-700
+  successBg: '#ECFDF5',
+  warning: '#B45309', // amber-700
+  warningBg: '#FFFBEB',
+  danger: '#B91C1C', // red-700
+  dangerBg: '#FEF2F2',
+  info: '#0369A1', // sky-700
+  infoBg: '#F0F9FF',
 } as const;
-
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
-
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
-});
 
 export const Spacing = {
-  half: 2,
-  one: 4,
-  two: 8,
-  three: 16,
-  four: 24,
-  five: 32,
-  six: 64,
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;
+export const Radius = {
+  sm: 6,
+  md: 8,
+  lg: 12,
+  full: 999,
+} as const;
+
+export const FontSize = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 18,
+  xl: 22,
+  xxl: 28,
+} as const;
+
+export const Fonts = Platform.select({
+  ios: { mono: 'ui-monospace' },
+  default: { mono: 'monospace' },
+  web: { mono: 'var(--font-mono)' },
+});

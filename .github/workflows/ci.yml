@@ -31,3 +31,7 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
         working-directory: apps/mobile
+      # tsc 只查类型，查不出模块解析失败或原生依赖缺失。
+      # 真正打一次包才能发现这类问题，而它们恰恰只在上设备时才暴露。
+      - run: npx expo export --platform ios --output-dir /tmp/expo-export
+        working-directory: apps/mobile
