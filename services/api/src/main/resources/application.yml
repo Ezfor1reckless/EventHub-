@@ -42,9 +42,23 @@ spring:
     publisher-returns: true
     listener:
       simple:
-        # 消费端手动 ACK，处理成功才确认，失败走重试→死信
-        acknowledge-mode: manual
+        # 用自动 ACK + 重试拦截器，而不是手动 ACK。
+        #
+        # 手动 ACK 下，监听器抛异常后要么无限 requeue（热循环打满 CPU），
+        # 要么直接 nack 进死信队列——一次数据库瞬断就会把「活动取消」这类通知
+        # 直接扔进 DLQ，用户永远收不到，得人工重放。
+        # 自动 ACK 配合下面的重试策略，瞬断能自愈，只有真正处理不了的才进 DLQ。
+        acknowledge-mode: auto
         prefetch: 10
+        # 重试用尽后拒绝消息并丢弃，由队列的 dead-letter-exchange 送进死信队列。
+        # 若设为 true 会无限 requeue，等于放弃死信队列。
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2
+          max-interval: 10s
 
 server:
   port: ${SERVER_PORT:8080}
@@ -61,6 +75,22 @@ app:
     issuer: eventhub
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8081}
+  security:
+    # 只有确实部署在可信反向代理（Nginx）之后才设为 true。
+    # 置为 true 后才会采信 X-Forwarded-For——而那个头是可被客户端伪造的，
+    # 无条件采信会让基于 IP 的限流形同虚设。
+    trust-proxy: ${TRUST_PROXY:false}
+  mail:
+    # false 时邮件只记日志，不真的发送——开发环境不需要一个可用的 SMTP 也能跑通通知链路。
+    # 置 true 并配好 spring.mail.* 即切换到真实发送。
+    enabled: ${MAIL_ENABLED:false}
+    from: ${SMTP_FROM:noreply@example.com}
+  outbox:
+    # 集成测试里若要断言「事件仍是 PENDING」，可关掉投递器
+    publisher-enabled: ${OUTBOX_PUBLISHER_ENABLED:true}
+    publish-interval: ${OUTBOX_PUBLISH_INTERVAL:2s}
+    cleanup-interval: ${OUTBOX_CLEANUP_INTERVAL:1h}
+    retention: ${OUTBOX_RETENTION:7d}
 
 management:
   endpoints:

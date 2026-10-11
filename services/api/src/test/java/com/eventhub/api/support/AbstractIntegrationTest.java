@@ -18,6 +18,7 @@ import org.testcontainers.containers.RabbitMQContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -141,6 +142,39 @@ public abstract class AbstractIntegrationTest {
 
     protected static String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    /** 当前登录用户的 id。 */
+    protected long currentUserId(String userToken) throws Exception {
+        MvcResult result = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/v1/me")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(userToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return data(result).path("id").asLong();
+    }
+
+    /**
+     * 轮询等待异步条件成立。
+     *
+     * <p>异步链路（Outbox → RabbitMQ → 消费者）无法用固定 sleep 可靠地测：
+     * 睡短了会随机失败，睡长了拖慢整个测试套件。这里用「轮询 + 超时」，
+     * 正常情况几十毫秒就返回。
+     */
+    protected void awaitUntil(String description, java.util.function.Supplier<Boolean> condition) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        while (Instant.now().isBefore(deadline)) {
+            if (Boolean.TRUE.equals(condition.get())) {
+                return;
+            }
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("等待被中断: " + description, ex);
+            }
+        }
+        throw new AssertionError("等待超时（15s）: " + description);
     }
 
     /**

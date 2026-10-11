@@ -12,7 +12,7 @@ MySQL 8.4，字符集 `utf8mb4` / `utf8mb4_unicode_ci`。所有时间列都是 `
 |---|---|---|
 | V1 | `V1__init_identity.sql` | `users`、`user_roles`、`refresh_tokens` |
 | V2 | `V2__init_events_registrations_checkins.sql` | `events`、`registrations`、`check_ins` |
-| V3（待做） | — | `notifications`、`outbox_events`、`audit_logs` |
+| V3 | `V3__init_async_and_audit.sql` | `outbox_events`、`notifications`、`audit_logs` |
 
 ## 表
 
@@ -89,6 +89,47 @@ MySQL 8.4，字符集 `utf8mb4` / `utf8mb4_unicode_ci`。所有时间列都是 `
 这是「重复签到被拒绝」的最后一道防线。应用层在插入前会先查一次
 `existsByRegistrationId`，但那个判断在并发下不可靠（两个请求可能同时通过检查），
 唯一索引才是真正兜底的那一层。服务层用 `saveAndFlush` 让冲突在此刻而非提交时抛出。
+
+### outbox_events
+
+| 列 | 说明 |
+|---|---|
+| aggregate_type / aggregate_id | 事件来源 |
+| event_type | 领域事件类型，消费端据此分派 |
+| routing_key | **显式存储**投递目标队列 |
+| payload | JSON 文本 |
+| status | PENDING / PUBLISHED / FAILED |
+| attempts / last_error | 重试次数与最后一次失败原因 |
+
+`routing_key` 显式存储而不是从 `event_type` 推导：推导规则一旦与新事件类型不匹配，
+消息会被发到一个没人监听的 routing key 上，既不报错也不落库——最难排查的一类故障。
+
+`payload` 用 `TEXT` 而非 MySQL 的 `JSON` 类型：Hibernate 的 String↔JSON 列映射需要
+额外的 `@JdbcTypeCode`，而 `ddl-auto=validate` 对类型比对很严格。代价是失去 JSON
+校验与函数，当前没有这类查询需求。
+
+`idx_outbox_status_created` 精确覆盖投递器的扫描条件（`status = PENDING` 按创建时间排序）。
+
+### notifications
+
+| 列 | 说明 |
+|---|---|
+| channel | IN_APP / EMAIL |
+| status | PENDING / SENT / FAILED（投递状态，与「已读」无关） |
+| source_event_id | 来源 Outbox 事件 id，消费幂等用 |
+| read_at | 已读时刻，NULL 表示未读 |
+
+唯一键是 **`(source_event_id, user_id)`** 而不是单独的 `source_event_id`：一条
+「活动取消」事件会给该活动所有已确认用户各生成一条通知，用事件 id 单独做唯一键
+会把它们全挡掉。
+
+注意：`(event, user)` 组合唯一意味着**每个用户每条事件只能有一条通知记录**，
+所以邮件不能另建一行（channel=EMAIL），而是通过 `MailGateway` 单独发送。
+
+### audit_logs
+
+`actor_id` 刻意**不建外键**：用户被删除后审计记录必须留存，因此它可能指向一个
+已不存在的用户。`source_event_id` 唯一，保证重复消费不会写出两条审计。
 
 ## 一致性与并发
 

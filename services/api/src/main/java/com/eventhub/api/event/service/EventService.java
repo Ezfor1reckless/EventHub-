@@ -1,13 +1,18 @@
 package com.eventhub.api.event.service;
 
+import com.eventhub.api.audit.service.AuditService;
 import com.eventhub.api.common.api.PageResponse;
 import com.eventhub.api.common.exception.BusinessException;
 import com.eventhub.api.common.exception.ErrorCode;
 import com.eventhub.api.event.domain.Event;
 import com.eventhub.api.event.domain.EventStatus;
 import com.eventhub.api.event.dto.EventRequest;
+import com.eventhub.api.event.cache.EventDetailCache;
 import com.eventhub.api.event.dto.EventResponse;
 import com.eventhub.api.event.repository.EventRepository;
+import com.eventhub.api.outbox.OutboxEventTypes;
+import com.eventhub.api.outbox.OutboxPayloads;
+import com.eventhub.api.outbox.service.OutboxService;
 import com.eventhub.api.registration.domain.Registration;
 import com.eventhub.api.registration.domain.RegistrationStatus;
 import com.eventhub.api.registration.repository.EventRegistrationCount;
@@ -26,6 +31,7 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -41,6 +47,9 @@ public class EventService {
     private final EventRepository eventRepository;
     private final RegistrationRepository registrationRepository;
     private final UserRepository userRepository;
+    private final OutboxService outboxService;
+    private final AuditService auditService;
+    private final EventDetailCache eventDetailCache;
 
     @Transactional
     public EventResponse create(Long userId, EventRequest request) {
@@ -81,6 +90,7 @@ public class EventService {
                 request.endAt(),
                 request.capacity()
         );
+        eventDetailCache.evict(eventId);
         return toResponse(event);
     }
 
@@ -93,6 +103,9 @@ public class EventService {
             throw BusinessException.of(ErrorCode.EVENT_CANNOT_EDIT, ex.getMessage());
         }
         log.info("发布活动 eventId={}", eventId);
+        auditService.record(userId, OutboxEventTypes.AUDIT_EVENT_PUBLISHED,
+                "Event", eventId, event.getTitle());
+        eventDetailCache.evict(eventId);
         return toResponse(event);
     }
 
@@ -106,16 +119,43 @@ public class EventService {
         }
 
         // 活动取消后，候补队列失去意义，整体清空。
-        // 已确认的报名保留原状态：退款/通知属于阶段 3 的异步链路，此处不动。
+        // 已确认的报名保留原状态：退款属于支付环节，此处不涉及。
         registrationRepository.findByEventIdAndStatus(eventId, RegistrationStatus.WAITLISTED)
                 .forEach(Registration::cancel);
 
-        log.info("取消活动 eventId={}", eventId);
+        // 通知所有仍占着名额的人。放在同一个事务里写 Outbox，
+        // 所以「活动被取消」和「通知会被发出」是同生共死的。
+        // 名单在这里快照进负载，消费端不再回查报名表——消费发生在将来某一刻，
+        // 那时报名表可能已被改动，重放历史事件会通知错人。
+        List<Long> recipients = registrationRepository
+                .findByEventIdAndStatusIn(eventId, SEAT_STATUSES)
+                .stream()
+                .map(Registration::getUserId)
+                .toList();
+
+        outboxService.enqueue(
+                OutboxEventTypes.AGGREGATE_EVENT,
+                eventId,
+                OutboxEventTypes.EVENT_CANCELLED,
+                OutboxEventTypes.ROUTING_NOTIFICATION,
+                new OutboxPayloads.EventCancelled(
+                        eventId, event.getOrganizerId(), event.getTitle(), recipients));
+
+        log.info("取消活动 eventId={}，待通知 {} 人", eventId, recipients.size());
+        auditService.record(userId, OutboxEventTypes.AUDIT_EVENT_CANCELLED,
+                "Event", eventId, event.getTitle());
+        eventDetailCache.evict(eventId);
         return toResponse(event);
     }
 
     @Transactional(readOnly = true)
     public EventResponse get(Long eventId) {
+        // 缓存里只有已发布活动，所以命中即是对所有人可见的内容，无需再做归属检查
+        Optional<EventResponse> cached = eventDetailCache.get(eventId);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> BusinessException.of(ErrorCode.EVENT_NOT_FOUND));
 
@@ -123,7 +163,14 @@ public class EventService {
         if (event.getStatus() == EventStatus.DRAFT && !isOwnerOrAdmin(event)) {
             throw BusinessException.of(ErrorCode.EVENT_NOT_FOUND);
         }
-        return toResponse(event);
+
+        EventResponse response = toResponse(event);
+
+        // 只缓存已发布：草稿的可见性因人而异，缓存它会造成越权
+        if (event.getStatus() == EventStatus.PUBLISHED) {
+            eventDetailCache.put(eventId, response);
+        }
+        return response;
     }
 
     @Transactional(readOnly = true)

@@ -4,3 +4,13 @@ app:
   jwt:
     # 仅仅是测试密钥，长度需 ≥32 字节以满足 HS256 的下限
     secret: integration-test-only-secret-key-please-do-not-use-in-production
+  rate-limit:
+    # 所有集成测试都从 127.0.0.1 发起，而测试会创建几十个用户，
+    # 任何有意义的人均限流都会把测试本身挡住。限流逻辑由 RateLimitServiceIT
+    # 用小限额单独验证。
+    enabled: false
+  outbox:
+    # 把投递间隔拉到 1 小时：@Scheduled 只在启动时跑一次，之后整个测试期间不再触发。
+    # 测试改为显式调用 publishPending()，这样「事件仍是 PENDING」这类断言
+    # 不会和一个每 2 秒跑一次的调度器抢时序。
+    publish-interval: 1h

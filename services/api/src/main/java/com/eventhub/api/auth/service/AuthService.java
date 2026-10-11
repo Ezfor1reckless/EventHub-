@@ -4,9 +4,13 @@ import com.eventhub.api.auth.domain.RefreshToken;
 import com.eventhub.api.auth.dto.LoginRequest;
 import com.eventhub.api.auth.dto.RegisterRequest;
 import com.eventhub.api.auth.dto.TokenResponse;
+import com.eventhub.api.audit.service.AuditService;
 import com.eventhub.api.auth.repository.RefreshTokenRepository;
 import com.eventhub.api.common.exception.BusinessException;
 import com.eventhub.api.common.exception.ErrorCode;
+import com.eventhub.api.common.ratelimit.RateLimitService;
+import com.eventhub.api.common.web.ClientIpResolver;
+import com.eventhub.api.outbox.OutboxEventTypes;
 import com.eventhub.api.security.JwtTokenProvider;
 import com.eventhub.api.security.TokenBlacklistService;
 import com.eventhub.api.user.domain.Role;
@@ -38,15 +42,31 @@ public class AuthService {
     private static final int REFRESH_TOKEN_BYTES = 32;
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    /**
+     * 登录限流：同一 IP 每分钟 10 次。
+     * 目的是把在线暴力破解的成本抬到不现实，同时不误伤正常用户的手滑重试。
+     */
+    private static final int LOGIN_LIMIT = 10;
+    private static final Duration LOGIN_WINDOW = Duration.ofMinutes(1);
+
+    /** 注册限流：同一 IP 每小时 5 次，挡批量注册小号。 */
+    private static final int REGISTER_LIMIT = 5;
+    private static final Duration REGISTER_WINDOW = Duration.ofHours(1);
+
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final SessionRevocationService sessionRevocation;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
     private final TokenBlacklistService tokenBlacklist;
+    private final AuditService auditService;
+    private final RateLimitService rateLimitService;
+    private final ClientIpResolver clientIpResolver;
 
     @Transactional
     public TokenResponse register(RegisterRequest request) {
+        rateLimitService.check("register", clientIpResolver.currentIp(), REGISTER_LIMIT, REGISTER_WINDOW);
+
         if (userRepository.existsByEmailIgnoreCase(request.email())) {
             throw BusinessException.of(ErrorCode.EMAIL_ALREADY_REGISTERED);
         }
@@ -62,11 +82,17 @@ public class AuthService {
 
         userRepository.save(user);
         log.info("新用户注册 userId={}", user.getId());
+
+        auditService.record(user.getId(), OutboxEventTypes.AUDIT_USER_REGISTERED,
+                "User", user.getId(), "email=" + user.getEmail());
+
         return issueTokens(user);
     }
 
     @Transactional
     public TokenResponse login(LoginRequest request) {
+        rateLimitService.check("login", clientIpResolver.currentIp(), LOGIN_LIMIT, LOGIN_WINDOW);
+
         // 邮箱不存在与密码错误返回同一个错误码，避免账号枚举
         User user = userRepository.findByEmailIgnoreCase(request.email().trim())
                 .orElseThrow(() -> BusinessException.of(ErrorCode.INVALID_CREDENTIALS));
@@ -77,6 +103,9 @@ public class AuthService {
         if (!user.isActive()) {
             throw BusinessException.of(ErrorCode.ACCOUNT_DISABLED);
         }
+
+        auditService.record(user.getId(), OutboxEventTypes.AUDIT_USER_LOGGED_IN,
+                "User", user.getId(), null);
 
         return issueTokens(user);
     }

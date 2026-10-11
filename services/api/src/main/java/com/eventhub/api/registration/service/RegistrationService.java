@@ -6,6 +6,9 @@ import com.eventhub.api.common.exception.ErrorCode;
 import com.eventhub.api.event.domain.Event;
 import com.eventhub.api.event.dto.EventSummary;
 import com.eventhub.api.event.repository.EventRepository;
+import com.eventhub.api.outbox.OutboxEventTypes;
+import com.eventhub.api.outbox.OutboxPayloads;
+import com.eventhub.api.outbox.service.OutboxService;
 import com.eventhub.api.registration.domain.Registration;
 import com.eventhub.api.registration.domain.RegistrationStatus;
 import com.eventhub.api.registration.dto.RegistrationResponse;
@@ -42,6 +45,7 @@ public class RegistrationService {
 
     private final EventRepository eventRepository;
     private final RegistrationRepository registrationRepository;
+    private final OutboxService outboxService;
 
     /**
      * 报名。满员则自动进入候补。
@@ -86,6 +90,13 @@ public class RegistrationService {
         }
 
         registrationRepository.save(registration);
+
+        // 只有真正占到名额才通知。幂等重放走的是上面提前 return 的分支，
+        // 所以不会重复发通知。
+        if (registration.getStatus() == RegistrationStatus.CONFIRMED) {
+            enqueueNotification(registration, event, OutboxEventTypes.REGISTRATION_CONFIRMED);
+        }
+
         return toResponse(registration, event);
     }
 
@@ -186,8 +197,25 @@ public class RegistrationService {
             Registration promoted = next.get();
             promoted.confirm();
             confirmed++;
+            enqueueNotification(promoted, event, OutboxEventTypes.WAITLIST_PROMOTED);
             log.info("活动 {} 递补：用户 {} 由候补转为已确认", event.getId(), promoted.getUserId());
         }
+    }
+
+    /** 写一条通知类 Outbox 事件。负载里带上渲染通知所需的全部信息，消费端不必回查。 */
+    private void enqueueNotification(Registration registration, Event event, String eventType) {
+        outboxService.enqueue(
+                OutboxEventTypes.AGGREGATE_REGISTRATION,
+                registration.getId(),
+                eventType,
+                OutboxEventTypes.ROUTING_NOTIFICATION,
+                new OutboxPayloads.RegistrationConfirmed(
+                        registration.getId(),
+                        event.getId(),
+                        registration.getUserId(),
+                        registration.getTicketCode(),
+                        event.getTitle(),
+                        event.getStartAt()));
     }
 
     /** 一次性把整页报名涉及的活动取回来，避免逐条查活动造成 N+1。 */

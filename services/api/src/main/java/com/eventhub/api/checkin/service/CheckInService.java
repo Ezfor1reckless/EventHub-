@@ -5,14 +5,17 @@ import com.eventhub.api.checkin.domain.CheckInMethod;
 import com.eventhub.api.checkin.dto.CheckInSessionResponse;
 import com.eventhub.api.checkin.dto.CheckInStatsResponse;
 import com.eventhub.api.checkin.dto.CheckInResponse;
+import com.eventhub.api.audit.service.AuditService;
 import com.eventhub.api.checkin.repository.CheckInRepository;
 import com.eventhub.api.common.exception.BusinessException;
 import com.eventhub.api.common.exception.ErrorCode;
+import com.eventhub.api.common.ratelimit.RateLimitService;
 import com.eventhub.api.event.domain.Event;
 import com.eventhub.api.event.domain.EventStatus;
 import com.eventhub.api.event.repository.EventRepository;
 import com.eventhub.api.registration.domain.Registration;
 import com.eventhub.api.registration.domain.RegistrationStatus;
+import com.eventhub.api.outbox.OutboxEventTypes;
 import com.eventhub.api.registration.repository.RegistrationRepository;
 import com.eventhub.api.security.SecurityUtils;
 import com.eventhub.api.user.domain.Role;
@@ -22,6 +25,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.EnumSet;
 
 @Slf4j
@@ -32,10 +36,19 @@ public class CheckInService {
     private static final EnumSet<RegistrationStatus> SEAT_STATUSES =
             EnumSet.of(RegistrationStatus.CONFIRMED, RegistrationStatus.CHECKED_IN);
 
+    /**
+     * 扫码限流，按用户计。
+     * 扫码失败重试很正常，所以额度给得比登录宽；目的是挡住拿脚本穷举签到码。
+     */
+    private static final int SCAN_LIMIT = 20;
+    private static final Duration SCAN_WINDOW = Duration.ofMinutes(1);
+
     private final EventRepository eventRepository;
     private final RegistrationRepository registrationRepository;
     private final CheckInRepository checkInRepository;
     private final CheckInTokenService checkInTokenService;
+    private final AuditService auditService;
+    private final RateLimitService rateLimitService;
 
     /** 组织者发起签到会话，拿到 60 秒有效的动态二维码令牌。 */
     @Transactional
@@ -52,6 +65,8 @@ public class CheckInService {
     /** 用户扫组织者投屏的二维码签到。 */
     @Transactional
     public CheckInResponse scan(Long userId, String token) {
+        rateLimitService.check("checkin", String.valueOf(userId), SCAN_LIMIT, SCAN_WINDOW);
+
         Long eventId = checkInTokenService.resolveEventId(token)
                 .orElseThrow(() -> BusinessException.of(ErrorCode.INVALID_CHECKIN_TOKEN));
 
@@ -122,6 +137,11 @@ public class CheckInService {
             log.warn("并发重复签到被唯一索引拦下 registrationId={}", registration.getId());
             throw BusinessException.of(ErrorCode.ALREADY_CHECKED_IN);
         }
+
+        // 自助扫码时操作者就是签到者本人；人工补签时是组织者
+        Long actorId = operatorId != null ? operatorId : registration.getUserId();
+        auditService.record(actorId, OutboxEventTypes.AUDIT_CHECK_IN,
+                "Registration", registration.getId(), "method=" + method);
 
         return CheckInResponse.of(checkIn, registration.getTicketCode());
     }

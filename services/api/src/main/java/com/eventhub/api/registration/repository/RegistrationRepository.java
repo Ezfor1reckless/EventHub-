@@ -41,6 +41,9 @@ public interface RegistrationRepository extends JpaRepository<Registration, Long
     /** 按状态取某活动的全部报名，用于活动取消时批量清理候补。 */
     List<Registration> findByEventIdAndStatus(Long eventId, RegistrationStatus status);
 
+    /** 按状态集合取某活动的全部报名，用于活动取消时收集通知名单。 */
+    List<Registration> findByEventIdAndStatusIn(Long eventId, Collection<RegistrationStatus> statuses);
+
     Page<Registration> findByUserIdOrderByRegisteredAtDesc(Long userId, Pageable pageable);
 
     Page<Registration> findByEventIdOrderByRegisteredAtAsc(Long eventId, Pageable pageable);
