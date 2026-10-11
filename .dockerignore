@@ -1,0 +1,35 @@
+# 构建上下文里排除的东西越多，docker build 越快、镜像越干净。
+# 这些都不该进入任何镜像。
+
+**/node_modules
+**/.next
+**/target
+**/.expo
+**/dist
+**/build
+
+.git
+.gitignore
+.github
+.idea
+.vscode
+.claude
+
+# 环境变量与密钥绝不能进镜像
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+
+# 文档与本地数据
+docs
+*.md
+!README.md
+infra/data
+
+**/*.log
+**/.DS_Store
+**/*.tsbuildinfo

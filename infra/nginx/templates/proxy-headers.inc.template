@@ -1,0 +1,20 @@
+# 转发给上游的反代头。
+#
+# X-Forwarded-For 用 $remote_addr 覆盖，而不是常见的
+# $proxy_add_x_forwarded_for（追加）。
+#
+# 追加是危险的：那个变量把客户端自带的 XFF 一并拼进来，而客户端可以随便填。
+# 后端一旦采信这个头，攻击者每次换一个伪造的 IP 就能绕过基于 IP 的限流——
+# 而且限流失效时不会有任何报错。
+#
+# 覆盖则保证这个头里的值只有一个来源：Nginx 看到的对端地址，客户端伪造不了。
+# 后端还需要把 app.security.trust-proxy 设为 true 才会采信它。
+
+proxy_set_header Host              $host;
+proxy_set_header X-Real-IP         $remote_addr;
+proxy_set_header X-Forwarded-For   $remote_addr;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host  $host;
+
+proxy_http_version 1.1;
+proxy_set_header Connection "";

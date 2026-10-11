@@ -1,0 +1,162 @@
+# 生产编排。这是 infra/docker-compose.yml 的**覆盖文件**，不是独立文件——
+# 数据服务（MySQL/Redis/RabbitMQ/Matomo）的定义仍在那份里，这里只做两件事：
+#   1. 加上应用层服务（api / web / nginx / certbot）
+#   2. 把数据服务的端口从公网收回，只留在容器网络内
+#
+# 用法（务必带上两个 -f，顺序不能反）：
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --env-file .env up -d
+# 或直接：make prod-up
+
+services:
+  # ---------------------------------------------------------------------------
+  # 数据服务的端口收回
+  #
+  # 基础文件里为了本地开发把 3306/6379/5672 映到了宿主机，生产环境这是纯风险：
+  # 公网上的 3306 端口会在几小时内被扫到并开始爆破。
+  #
+  # 用 !reset 把整个 ports 列表清空。不能靠「不写 ports」来覆盖——
+  # Compose 对 ports 这类多值字段是**追加**语义，不是替换，写了反而会叠加。
+  # ---------------------------------------------------------------------------
+  mysql:
+    ports: !reset []
+    restart: unless-stopped
+
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+
+  rabbitmq:
+    ports: !reset []
+    restart: unless-stopped
+
+  matomo-db:
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # 应用层
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ../services/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # 显式逐个列出，而不是 env_file: ../.env 整个灌进来。
+    # 理由：.env 里还有 CERTBOT_EMAIL、Matomo 数据库密码这些 API 完全用不到的东西，
+    # 把它们塞进应用容器没有任何好处，只是扩大了泄露面。同时这样也便于一眼看出
+    # 容器到底拿到了哪些配置——排查「环境变量没生效」时省很多事。
+    environment:
+      SERVER_PORT: "8080"
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+
+      # 容器网络内用服务名互访
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+
+      CORS_ALLOWED_ORIGINS: https://${APP_DOMAIN}
+
+      # 部署在 Nginx 之后，X-Forwarded-For 由 Nginx 覆盖写入、客户端伪造不了，
+      # 所以此时可以采信它做基于 IP 的限流
+      # （见 nginx/templates/proxy-headers.inc.template 里的说明）
+      TRUST_PROXY: "true"
+      # 刷新令牌 Cookie 必须只在 HTTPS 上下发
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_COOKIE_SAME_SITE: Lax
+
+      # 邮件。MAIL_ENABLED=false 时只记日志不发信，但整条通知链路照常走通。
+      # 配好 SMTP 后改成 true 即启用真实发送。
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      SPRING_MAIL_HOST: ${SMTP_HOST}
+      SPRING_MAIL_PORT: ${SMTP_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SMTP_USERNAME}
+      SPRING_MAIL_PASSWORD: ${SMTP_PASSWORD}
+      APP_MAIL_FROM: ${SMTP_FROM}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [eventhub]
+
+  web:
+    build:
+      # 构建上下文是仓库根：npm workspaces 的 lockfile 在那里
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      # 浏览器侧的 API 地址。必须是公网可达的地址，不能是容器名——
+      # 这个值会被打进客户端 JS，在用户浏览器里解析。
+      NEXT_PUBLIC_API_BASE_URL: ${API_BASE_URL}
+      NEXT_PUBLIC_MATOMO_URL: ${MATOMO_URL}
+      NEXT_PUBLIC_MATOMO_SITE_ID: ${MATOMO_SITE_ID}
+      # 服务端渲染时取数用的地址。走容器网络，不绕公网、不依赖 DNS。
+      API_INTERNAL_URL: http://api:8080/api/v1
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [eventhub]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # conf.d 由 scripts/init-letsencrypt.sh 渲染，所以这里挂目录而不是单个文件
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - api
+      - web
+      - matomo
+    networks: [eventhub]
+
+  # 证书续期。Certbot 签发的证书有效期 90 天，这个容器每 12 小时检查一次，
+  # 剩余不足 30 天时自动续期。少了它，站点会在第 90 天毫无征兆地挂掉。
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # 前台循环而不是 cron：容器里没有 cron 守护进程，
+    # 而且用前台进程能正确响应 docker stop 的 SIGTERM。
+    entrypoint: >
+      sh -c "trap exit TERM;
+             while :; do
+               certbot renew --webroot -w /var/www/certbot --quiet;
+               sleep 12h & wait $${!};
+             done"
+    networks: [eventhub]

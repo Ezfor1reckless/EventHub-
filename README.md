@@ -66,11 +66,11 @@ make down                     # 停止
 - [x] **阶段 3** 异步与缓存：Outbox + RabbitMQ 通知/审计、Redis 缓存与限流、死信队列
 - [x] **阶段 4** Web 端：公开页面（Server Components）、登录注册、我的报名与票券、通知、组织者管理台、Matomo 埋点
 - [x] **阶段 5** 移动端：Expo 57 + Expo Router，活动浏览/报名、票券二维码、扫码签到、通知、个人中心
-- [ ] **阶段 6** 部署：Nginx + Certbot + 生产 Compose
+- [x] **阶段 6** 部署：多阶段 Dockerfile（api / web）、Nginx 反代与 HTTPS、Certbot 签发与续期、生产编排
 - [ ] **阶段 7** 测试与验收：JUnit / Testcontainers / Playwright / Jest
 
 详细策划见 [`docs/project-plan.md`](docs/project-plan.md)，架构说明见 [`docs/architecture.md`](docs/architecture.md)，
-库表设计见 [`docs/database.md`](docs/database.md)。
+库表设计见 [`docs/database.md`](docs/database.md)，部署见 [`docs/deployment.md`](docs/deployment.md)。
 
 接口规范 [`docs/openapi.yaml`](docs/openapi.yaml) 由 springdoc 在运行时从 Controller 生成，
 是**产物不是手写文档**——手写的规范改第一个接口就开始漂移。要更新它：

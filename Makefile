@@ -1,7 +1,10 @@
 SHELL := /bin/bash
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
+# 生产是「基础 + 覆盖」两份文件的组合，顺序不能反：后者覆盖前者
+PROD_COMPOSE := docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --env-file .env
 
-.PHONY: help up down restart logs ps psql redis-cli clean web mobile api test openapi
+.PHONY: help up down restart logs ps psql redis-cli clean web mobile api test openapi \
+        prod-up prod-down prod-logs prod-ps prod-config prod-build init-ssl
 
 help: ## 显示可用命令
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -45,3 +48,27 @@ test: ## 运行全部测试
 
 openapi: ## 从运行中的应用导出 OpenAPI 到 docs/openapi.yaml（需先 make up && make api）
 	@bash scripts/export-openapi.sh
+
+# ---------------- 生产 ----------------
+
+prod-build: ## 构建生产镜像（api / web）
+	$(PROD_COMPOSE) build
+
+prod-up: ## 启动生产环境（含 Nginx，需已有证书或先跑 make init-ssl）
+	$(PROD_COMPOSE) up -d --build
+
+prod-down: ## 停止生产环境（保留数据卷）
+	$(PROD_COMPOSE) down
+
+prod-logs: ## 跟踪生产环境日志
+	$(PROD_COMPOSE) logs -f --tail=100
+
+prod-ps: ## 查看生产环境状态
+	$(PROD_COMPOSE) ps
+
+prod-config: ## 校验生产编排配置并打印最终结果（不启动任何东西）
+	@$(PROD_COMPOSE) config | head -5
+	@echo "... (完整输出：$(PROD_COMPOSE) config)"
+
+init-ssl: ## 首次签发 TLS 证书（建议先 STAGING=1 make init-ssl 试跑）
+	@bash scripts/init-letsencrypt.sh

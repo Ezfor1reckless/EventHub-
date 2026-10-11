@@ -1,0 +1,69 @@
+# 正式配置：80 只做跳转与证书续期，443 承担全部流量。
+# 由 scripts/init-letsencrypt.sh 渲染后写入 conf.d/default.conf。
+
+# ---------- 80：续期验证 + 跳转 ----------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${APP_DOMAIN};
+
+    # 续期验证必须留在 80 且不能跳转，否则 Certbot 拿不到 challenge 响应
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ---------- 443：全部流量 ----------
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${APP_DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${APP_DOMAIN}/privkey.pem;
+
+    # 只留 TLS 1.2/1.3。1.0/1.1 已被主流浏览器弃用，且存在已知弱点。
+    ssl_protocols TLSv1.2 TLSv1.3;
+    # 由服务端选密码套件：客户端（尤其是老旧客户端）的偏好通常更差
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    client_max_body_size 10m;
+
+    # 统一的代理头。抽出来是为了避免三个 location 各写一遍后悄悄写歪。
+    include /etc/nginx/conf.d/proxy-headers.inc;
+
+    # ---------- API ----------
+    # proxy_pass 末尾不带斜杠 → 保留完整 URI，
+    # /api/v1/events 原样转发到后端 /api/v1/events
+    location /api/ {
+        proxy_pass http://api:8080;
+        proxy_read_timeout 60s;
+    }
+
+    # ---------- Matomo ----------
+    # 这里的 proxy_pass 末尾带斜杠 → 剥掉 /matomo 前缀，
+    # /matomo/matomo.php 转到 Matomo 的 /matomo.php
+    location /matomo/ {
+        proxy_pass http://matomo:80/;
+        proxy_read_timeout 120s;
+    }
+
+    # ---------- Web ----------
+    # 放在最后：nginx 按最长前缀匹配，所以 /api/ 和 /matomo/ 会优先命中
+    location / {
+        proxy_pass http://web:3000;
+        proxy_read_timeout 60s;
+    }
+}
