@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "start:standalone": "node scripts/prepare-standalone.mjs && node .next/standalone/apps/web/server.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -21,6 +22,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.6",

@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button, Card, ErrorAlert, Field, Input, Screen } from '@/components/ui';
 import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
+import { validateLogin } from '@/lib/validation';
 import { Colors, FontSize, Spacing } from '@/constants/theme';
 
 export default function LoginScreen() {
@@ -23,14 +24,9 @@ export default function LoginScreen() {
     setFieldErrors({});
 
     // 前端校验只为即时反馈，不是安全边界——后端会独立校验一遍
-    if (!email.trim()) {
-      setFieldErrors({ email: '请输入邮箱' });
-      return;
-    }
-    if (!password) {
-      setFieldErrors({ password: '请输入密码' });
-      return;
-    }
+    const errors = validateLogin({ email, password });
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
 
     setSubmitting(true);
     try {

@@ -32,8 +32,20 @@ if [[ ! -f .env ]]; then
     exit 1
 fi
 
-# shellcheck disable=SC1091
-set -a; source .env; set +a
+# 逐行解析，刻意不用 `source`。
+# .env 里的值不保证是合法的 shell 语法——例如
+#   SMTP_FROM=EventHub <noreply@example.com>
+# 里的 `<` 会被 bash 当成重定向符，source 会在那一行直接报语法错误中断脚本，
+# 而且报错位置很靠前，看起来像是脚本本身写坏了。
+read_env() {
+    local key="$1" fallback="${2:-}"
+    local value
+    value="$(grep -E "^${key}=" .env | tail -1 | cut -d= -f2-)"
+    printf '%s' "${value:-${fallback}}"
+}
+
+APP_DOMAIN="$(read_env APP_DOMAIN)"
+CERTBOT_EMAIL="$(read_env CERTBOT_EMAIL)"
 
 if [[ -z "${APP_DOMAIN:-}" || "${APP_DOMAIN}" == "example.com" ]]; then
     echo "请先在 .env 里把 APP_DOMAIN 设成真实域名（当前：${APP_DOMAIN:-未设置}）" >&2

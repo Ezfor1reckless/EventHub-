@@ -67,7 +67,7 @@ make down                     # 停止
 - [x] **阶段 4** Web 端：公开页面（Server Components）、登录注册、我的报名与票券、通知、组织者管理台、Matomo 埋点
 - [x] **阶段 5** 移动端：Expo 57 + Expo Router，活动浏览/报名、票券二维码、扫码签到、通知、个人中心
 - [x] **阶段 6** 部署：多阶段 Dockerfile（api / web）、Nginx 反代与 HTTPS、Certbot 签发与续期、生产编排
-- [ ] **阶段 7** 测试与验收：JUnit / Testcontainers / Playwright / Jest
+- [x] **阶段 7** 测试与验收：后端 51 个 Testcontainers 集成测试、Web 12 个 Playwright 端到端测试、移动端 22 个 Jest 单测、CI 三端并行
 
 详细策划见 [`docs/project-plan.md`](docs/project-plan.md)，架构说明见 [`docs/architecture.md`](docs/architecture.md)，
 库表设计见 [`docs/database.md`](docs/database.md)，部署见 [`docs/deployment.md`](docs/deployment.md)。
@@ -146,6 +146,25 @@ Android Keystore），访问令牌只在内存。用 SecureStore 而不是 Async
 
 **创建和编辑活动不在移动端**——策划里移动端的范围是浏览、报名、票券、扫码和通知，
 活动管理属于 Web 端。与其做一个字段残缺的管理页，不如让 `/organizer` 保持只读。
+
+## 测试
+
+| 层 | 工具 | 数量 | 命令 |
+|---|---|---|---|
+| 后端 | JUnit + Testcontainers（真实 MySQL/Redis/RabbitMQ） | 51 | `cd services/api && ./mvnw verify` |
+| Web 端到端 | Playwright（真实浏览器 + 真实后端） | 12 | `make e2e` |
+| 移动端 | Jest | 22 | `npm test --workspace apps/mobile` |
+
+后端集成测试全部跑在真实中间件上，不用 H2 或嵌入式替身——本项目最容易出错的地方
+（并发超卖、事务传播、唯一索引、缓存失效）恰恰只在真实实现上才暴露。三处真 bug
+就是这么找到的：泄露处置被自己的异常回滚、匿名浏览被 401 拦下、限流开关读不到环境变量。
+
+**端到端测试必须重置数据。** E2E 会不断创建活动，而活动列表一页只显示 12 条，
+跑几轮之后新建的活动被挤到第 2 页，「它应当出现在列表里」这条断言就开始随机失败——
+看起来像产品坏了，实际是测试数据在累积。`make e2e` 会先清空数据库与 Redis 再跑。
+
+E2E 跑的是 `standalone` server（生产部署用的同一个），不是 `next start`。
+用后者测出来的结果属于另一个产物，生产上出问题的地方测试覆盖不到。
 
 ## 约定
 

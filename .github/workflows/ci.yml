@@ -6,31 +6,119 @@ on:
   pull_request:
 
 jobs:
+  api:
+    name: API (Spring Boot)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # verify 会跑 Surefire（*Test）与 Failsafe（*IT）。
+      # 集成测试用 Testcontainers 拉起真实的 MySQL/Redis/RabbitMQ，
+      # ubuntu-latest 上自带 Docker，无需额外配置。
+      - run: ./mvnw -B verify
+        working-directory: services/api
+
+      # 测试失败时把报告传上去，省得为了看一条断言失败重跑整个流水线
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: api-test-reports
+          path: |
+            services/api/target/surefire-reports
+            services/api/target/failsafe-reports
+          retention-days: 7
+
   web:
     name: Web (Next.js)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
       - run: npm ci
       - run: npm run lint --workspace apps/web
       - run: npm run build --workspace apps/web
+
+      # 端到端测试需要后端 + 数据服务。CI 里用 Docker Compose 起真实依赖，
+      # 而不是打桩——阶段 2 的经验是，本项目最容易出错的地方
+      # （并发、事务、缓存失效）恰恰只在真实组件上才暴露。
+      - name: Start backend dependencies
+        run: |
+          docker compose -f infra/docker-compose.yml --env-file .env.example up -d mysql redis rabbitmq
+          # 等 MySQL 真正可用，而不是简单 sleep
+          for i in $(seq 1 40); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' eventhub-mysql-1 2>/dev/null || echo starting)
+            [ "$status" = "healthy" ] && break
+            sleep 5
+          done
+
+      - name: Start API
+        run: |
+          cd services/api
+          MYSQL_HOST=127.0.0.1 MYSQL_PORT=3306 MYSQL_DATABASE=eventhub \
+          MYSQL_USER=eventhub MYSQL_PASSWORD=change-me-mysql \
+          REDIS_HOST=127.0.0.1 REDIS_PORT=6379 REDIS_PASSWORD=change-me-redis \
+          RABBITMQ_HOST=127.0.0.1 RABBITMQ_PORT=5672 \
+          RABBITMQ_USER=eventhub RABBITMQ_PASSWORD=change-me-rabbit \
+          JWT_SECRET=ci-only-secret-key-at-least-32-bytes-long \
+          RATE_LIMIT_ENABLED=false \
+          ./mvnw -B -q spring-boot:run > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:8080/actuator/health && exit 0
+            sleep 5
+          done
+          echo "后端未在预期时间内就绪，日志如下：" >&2
+          tail -50 /tmp/api.log >&2
+          exit 1
+
+      # 清空上一轮留下的数据。E2E 会不断创建活动，而活动列表一页只显示 12 条，
+      # 不清的话新活动会被挤到第 2 页，断言「它在列表里」就开始随机失败。
+      # CI 每次都是全新容器，但本地反复跑就会撞上；统一走同一条路径省得两边不一致。
+      - name: Reset test data
+        run: bash scripts/reset-test-data.sh
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: Run E2E tests
+        run: npx playwright test
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
 
   mobile:
     name: Mobile (Expo)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
       - run: npm ci
       - run: npx tsc --noEmit
         working-directory: apps/mobile
+      - run: npm test --workspace apps/mobile
       # tsc 只查类型，查不出模块解析失败或原生依赖缺失。
       # 真正打一次包才能发现这类问题，而它们恰恰只在上设备时才暴露。
       - run: npx expo export --platform ios --output-dir /tmp/expo-export

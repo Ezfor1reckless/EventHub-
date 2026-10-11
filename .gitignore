@@ -39,3 +39,11 @@ target/
 
 # ---- docker volumes (local bind mounts, if any) ----
 infra/data/
+
+# ---- playwright ----
+# 测试产物：失败截图、trace、HTML 报告。CI 里需要时通过 artifact 上传，
+# 不该进版本库。
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+apps/web/playwright/.cache/

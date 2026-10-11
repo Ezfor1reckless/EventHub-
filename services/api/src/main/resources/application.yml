@@ -80,6 +80,12 @@ app:
     # 置为 true 后才会采信 X-Forwarded-For——而那个头是可被客户端伪造的，
     # 无条件采信会让基于 IP 的限流形同虚设。
     trust-proxy: ${TRUST_PROXY:false}
+  rate-limit:
+    # 关掉后所有限流检查直接放行。
+    # 集成测试与端到端测试都必须关：它们全部从同一个 IP（127.0.0.1）发起，
+    # 而测试会创建几十个用户，任何有意义的人均限流都会把测试自己挡住。
+    # 限流逻辑本身由 RateLimitServiceIT 用小限额单独验证。
+    enabled: ${RATE_LIMIT_ENABLED:true}
   auth:
     cookie:
       name: ${AUTH_COOKIE_NAME:eh_refresh}

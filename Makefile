@@ -3,7 +3,7 @@ COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
 # 生产是「基础 + 覆盖」两份文件的组合，顺序不能反：后者覆盖前者
 PROD_COMPOSE := docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --env-file .env
 
-.PHONY: help up down restart logs ps psql redis-cli clean web mobile api test openapi \
+.PHONY: help up down restart logs ps psql redis-cli clean web mobile api test openapi e2e reset-test-data \
         prod-up prod-down prod-logs prod-ps prod-config prod-build init-ssl
 
 help: ## 显示可用命令
@@ -48,6 +48,14 @@ test: ## 运行全部测试
 
 openapi: ## 从运行中的应用导出 OpenAPI 到 docs/openapi.yaml（需先 make up && make api）
 	@bash scripts/export-openapi.sh
+
+e2e: ## 重置测试数据并跑端到端测试（需先 make up && make api）
+	@bash scripts/reset-test-data.sh
+	npm run build --workspace apps/web
+	npx playwright test --config apps/web/playwright.config.ts
+
+reset-test-data: ## 只重置测试数据，不跑测试
+	@bash scripts/reset-test-data.sh
 
 # ---------------- 生产 ----------------
 

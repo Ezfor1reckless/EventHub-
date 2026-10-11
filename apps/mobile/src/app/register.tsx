@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button, Card, ErrorAlert, Field, Input, Screen } from '@/components/ui';
 import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
+import { validateRegistration } from '@/lib/validation';
 import { Colors, FontSize, Spacing } from '@/constants/theme';
 
 export default function RegisterScreen() {
@@ -22,22 +23,7 @@ export default function RegisterScreen() {
   const handleSubmit = async () => {
     setError(null);
 
-    // 规则与后端 RegisterRequest 一致。前端校验只为即时反馈，后端仍会独立校验。
-    const errors: Record<string, string> = {};
-    if (!email.trim()) errors.email = '请输入邮箱';
-    else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))
-      errors.email = '邮箱格式不正确';
-
-    if (!nickname.trim()) errors.nickname = '请输入昵称';
-    else if (nickname.trim().length > 64) errors.nickname = '昵称不能超过 64 个字符';
-
-    if (password.length < 8) errors.password = '密码至少 8 位';
-    else if (password.length > 72) errors.password = '密码不能超过 72 位';
-    else if (!/^(?=.*[A-Za-z])(?=.*\d).+$/.test(password))
-      errors.password = '密码需同时包含字母和数字';
-
-    if (phone && !/^1[3-9]\d{9}$/.test(phone)) errors.phone = '手机号格式不正确';
-
+    const errors = validateRegistration({ email, nickname, password, phone });
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
