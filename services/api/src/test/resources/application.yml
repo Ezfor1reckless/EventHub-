@@ -1,0 +1,6 @@
+# 测试专用的覆盖项。数据源 / Redis / RabbitMQ 全部由 Testcontainers 注入，
+# 这里只补上那些容器给不了、又必须存在的配置。
+app:
+  jwt:
+    # 仅仅是测试密钥，长度需 ≥32 字节以满足 HS256 的下限
+    secret: integration-test-only-secret-key-please-do-not-use-in-production

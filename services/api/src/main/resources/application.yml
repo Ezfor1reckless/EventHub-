@@ -1,0 +1,82 @@
+spring:
+  application:
+    name: eventhub-api
+
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:eventhub}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${MYSQL_USER:eventhub}
+    password: ${MYSQL_PASSWORD:}
+
+  jpa:
+    # 结构由 Flyway 掌管。validate 让实体与迁移脚本的漂移在启动时就暴露，
+    # 而不是等到某次查询运行到一半才炸。
+    hibernate:
+      ddl-auto: validate
+    # 关掉 Open Session in View：否则视图渲染期间还握着数据库连接，
+    # 会把连接池耗尽的问题掩盖到生产环境才发作。
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3s
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:eventhub}
+    password: ${RABBITMQ_PASSWORD:}
+    # 生产者确认：消息真正落到 broker 才算发送成功
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        # 消费端手动 ACK，处理成功才确认，失败走重试→死信
+        acknowledge-mode: manual
+        prefetch: 10
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+app:
+  jwt:
+    # 故意不给默认值：密钥缺失时启动即失败，好过用一个人人皆知的默认值跑起来
+    secret: ${JWT_SECRET:}
+    access-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-ttl: ${JWT_REFRESH_TTL:7d}
+    issuer: eventhub
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.eventhub.api: INFO
