@@ -64,7 +64,7 @@ make down                     # 停止
 - [x] **阶段 1** 后端骨架：Spring Boot 3.5 + Java 17 + Security + JPA + Flyway + springdoc
 - [x] **阶段 2** 核心业务：活动 CRUD、报名、候补递补、并发防超卖、扫码签到
 - [x] **阶段 3** 异步与缓存：Outbox + RabbitMQ 通知/审计、Redis 缓存与限流、死信队列
-- [ ] **阶段 4** Web 端
+- [x] **阶段 4** Web 端：公开页面（Server Components）、登录注册、我的报名与票券、通知、组织者管理台、Matomo 埋点
 - [ ] **阶段 5** 移动端
 - [ ] **阶段 6** 部署：Nginx + Certbot + 生产 Compose
 - [ ] **阶段 7** 测试与验收：JUnit / Testcontainers / Playwright / Jest
@@ -81,6 +81,36 @@ make openapi            # 导出到 docs/openapi.yaml
 ```
 
 开发时直接看 http://localhost:8080/swagger-ui.html 更方便。
+
+## 前端开发
+
+```bash
+make up          # 起 MySQL / Redis / RabbitMQ
+make api         # 另开终端，起后端（:8080）
+make web         # 再开一个终端，起 Next.js（:3000）
+```
+
+### 页面
+
+| 路径 | 说明 | 渲染方式 |
+|---|---|---|
+| `/` | 首页 + 近期活动 | Server Component |
+| `/events`、`/events/[id]` | 活动列表 / 详情 | Server Component（骨架预渲染 + 流式） |
+| `/login`、`/register` | 登录 / 注册 | Client |
+| `/me`、`/me/registrations`、`/me/notifications` | 个人中心 / 我的报名与票券 / 通知 | Client（需登录） |
+| `/organizer/events`、`/new`、`/[id]` | 活动管理、创建、报名名单与签到 | Client（需登录） |
+
+### 认证方式
+
+访问令牌**只存在内存**，不写 localStorage —— 那里存的东西任何注入的 JS 都能读走。
+刷新令牌放在 **HttpOnly Cookie** 里，JS 看不见；页面刷新后由它换一个新的访问令牌。
+访问令牌 15 分钟过期，客户端在收到 401 时自动刷新并重放请求（单飞，避免并发刷新
+触发后端的令牌重用检测）。
+
+### 尚未实现
+
+**管理端页面（用户管理、活动审核、审计日志、系统配置）没有做**，因为后端还没有
+`/admin/*` 接口。这几个页面需要先补后端管理接口，否则只能做出点了没反应的假页面。
 
 ## 约定
 

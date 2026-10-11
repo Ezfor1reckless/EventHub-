@@ -42,6 +42,14 @@ public class RegistrationController {
         return ApiResponse.ok();
     }
 
+    @Operation(summary = "我在某活动的报名",
+            description = "没有报名时 data 为 null。活动详情页据此决定按钮状态")
+    @GetMapping("/events/{eventId}/registrations/me")
+    public ApiResponse<RegistrationResponse> myRegistration(@PathVariable Long eventId) {
+        return ApiResponse.ok(
+                registrationService.findMine(SecurityUtils.requireUserId(), eventId));
+    }
+
     @Operation(summary = "我的报名")
     @GetMapping("/me/registrations")
     public ApiResponse<PageResponse<RegistrationResponse>> myRegistrations(

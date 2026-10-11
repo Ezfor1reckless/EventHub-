@@ -80,6 +80,14 @@ app:
     # 置为 true 后才会采信 X-Forwarded-For——而那个头是可被客户端伪造的，
     # 无条件采信会让基于 IP 的限流形同虚设。
     trust-proxy: ${TRUST_PROXY:false}
+  auth:
+    cookie:
+      name: ${AUTH_COOKIE_NAME:eh_refresh}
+      # 收窄到认证路径：刷新令牌没有理由出现在每一次业务请求里
+      path: ${AUTH_COOKIE_PATH:/api/v1/auth}
+      # 生产必须 true（只有 HTTPS 才下发）。本地 http 开发为 false。
+      secure: ${AUTH_COOKIE_SECURE:false}
+      same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
   mail:
     # false 时邮件只记日志，不真的发送——开发环境不需要一个可用的 SMTP 也能跑通通知链路。
     # 置 true 并配好 spring.mail.* 即切换到真实发送。

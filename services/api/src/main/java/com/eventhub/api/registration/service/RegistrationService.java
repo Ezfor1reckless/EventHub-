@@ -148,6 +148,21 @@ public class RegistrationService {
         }
     }
 
+    /**
+     * 当前用户在某活动里的报名，没有则返回 null。
+     *
+     * <p>活动详情页需要据此决定按钮是「报名」还是「取消报名」还是「候补中」。
+     * 让客户端去拉全量「我的报名」再过滤既浪费又会在分页边界上出错。
+     */
+    @Transactional(readOnly = true)
+    public RegistrationResponse findMine(Long userId, Long eventId) {
+        return registrationRepository.findByEventIdAndUserId(eventId, userId)
+                .map(registration -> toResponse(registration,
+                        eventRepository.findById(eventId)
+                                .orElseThrow(() -> BusinessException.of(ErrorCode.EVENT_NOT_FOUND))))
+                .orElse(null);
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<RegistrationResponse> listMine(Long userId, Pageable pageable) {
         Page<Registration> page = registrationRepository.findByUserIdOrderByRegisteredAtDesc(userId, pageable);
