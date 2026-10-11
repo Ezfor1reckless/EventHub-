@@ -41,6 +41,10 @@ public class SecurityConfig {
             "/actuator/health",
             "/actuator/health/**",
             "/actuator/info",
+            "/v3/api-docs",
+            // 单独列出："/v3/api-docs/**" 的通配符要求斜杠后还有内容，
+            // 匹配不到 /v3/api-docs.yaml，那个变体曾被漏掉而返回 401。
+            "/v3/api-docs.yaml",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html"
@@ -62,6 +66,10 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
+                        // 浏览活动不需要登录：首页、活动列表、活动详情都是公开的。
+                        // 只放开 GET，且只放开单层路径，所以
+                        // /events/{id}/registrations 这类子资源仍然要求认证。
+                        .requestMatchers(HttpMethod.GET, "/api/v1/events", "/api/v1/events/*").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
 
-.PHONY: help up down restart logs ps psql redis-cli clean web mobile api test
+.PHONY: help up down restart logs ps psql redis-cli clean web mobile api test openapi
 
 help: ## 显示可用命令
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -42,3 +42,6 @@ api: ## 启动后端
 test: ## 运行全部测试
 	npm run test --workspaces --if-present
 	cd services/api && ./mvnw verify
+
+openapi: ## 从运行中的应用导出 OpenAPI 到 docs/openapi.yaml（需先 make up && make api）
+	@bash scripts/export-openapi.sh

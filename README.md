@@ -61,15 +61,26 @@ make down                     # 停止
 
 - [x] **阶段 0** 项目初始化：monorepo 目录、文档、`.env.example`、基础 docker-compose
 - [x] **阶段 0.5** Web/Mobile 脚手架：Next.js 16 + Tailwind 4 / Expo 57 + Expo Router，均已通过构建与类型检查（后端前置工作）
-- [ ] **阶段 1** 后端骨架：Spring Boot 3 + Security + JPA + Flyway + OpenAPI
-- [ ] **阶段 2** 核心业务：用户、活动、报名、候补、签到
+- [x] **阶段 1** 后端骨架：Spring Boot 3.5 + Java 17 + Security + JPA + Flyway + springdoc
+- [x] **阶段 2** 核心业务：活动 CRUD、报名、候补递补、并发防超卖、扫码签到
 - [ ] **阶段 3** 异步与缓存：Outbox + RabbitMQ、Redis 缓存/限流/签到码
 - [ ] **阶段 4** Web 端
 - [ ] **阶段 5** 移动端
 - [ ] **阶段 6** 部署：Nginx + Certbot + 生产 Compose
 - [ ] **阶段 7** 测试与验收：JUnit / Testcontainers / Playwright / Jest
 
-详细策划见 [`docs/project-plan.md`](docs/project-plan.md)，架构说明见 [`docs/architecture.md`](docs/architecture.md)。
+详细策划见 [`docs/project-plan.md`](docs/project-plan.md)，架构说明见 [`docs/architecture.md`](docs/architecture.md)，
+库表设计见 [`docs/database.md`](docs/database.md)。
+
+接口规范 [`docs/openapi.yaml`](docs/openapi.yaml) 由 springdoc 在运行时从 Controller 生成，
+是**产物不是手写文档**——手写的规范改第一个接口就开始漂移。要更新它：
+
+```bash
+make up && make api     # 另开一个终端跑 make api
+make openapi            # 导出到 docs/openapi.yaml
+```
+
+开发时直接看 http://localhost:8080/swagger-ui.html 更方便。
 
 ## 约定
 

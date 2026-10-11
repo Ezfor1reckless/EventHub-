@@ -29,6 +29,22 @@ public enum ErrorCode {
 
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "请求过于频繁，请稍后再试"),
 
+    // ---- 活动 ----
+    EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "活动不存在"),
+    EVENT_NOT_OPEN(HttpStatus.CONFLICT, "活动当前不接受报名"),
+    EVENT_CANNOT_EDIT(HttpStatus.CONFLICT, "当前状态的活动不可编辑"),
+    EVENT_TIME_INVALID(HttpStatus.BAD_REQUEST, "结束时间必须晚于开始时间"),
+    NOT_EVENT_ORGANIZER(HttpStatus.FORBIDDEN, "只有活动组织者可以执行该操作"),
+
+    // ---- 报名 ----
+    REGISTRATION_NOT_FOUND(HttpStatus.NOT_FOUND, "报名记录不存在"),
+    REGISTRATION_NOT_CANCELLABLE(HttpStatus.CONFLICT, "该报名当前状态不可取消"),
+
+    // ---- 签到 ----
+    INVALID_CHECKIN_TOKEN(HttpStatus.UNAUTHORIZED, "签到码无效或已过期"),
+    REGISTRATION_NOT_CONFIRMED(HttpStatus.CONFLICT, "只有已确认的报名可以签到"),
+    ALREADY_CHECKED_IN(HttpStatus.CONFLICT, "该报名已签到，请勿重复签到"),
+
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "服务器内部错误");
 
     private final HttpStatus status;
